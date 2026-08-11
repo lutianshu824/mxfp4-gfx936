@@ -3,7 +3,7 @@
 This example separates three questions:
 
 1. Does the hybrid checkpoint have the intended structure?
-2. Does the gfx936 safe path match an independent dequantized reference?
+2. Does the gfx936 guarded Triton path match an independent dequantized reference?
 3. Does the hybrid checkpoint remain within the predefined quality thresholds
    relative to the same-source BF16 model at the same tensor-parallel size?
 
@@ -43,9 +43,16 @@ and a 380-token PPL probe.
 - official BF16: `MXFP4_QUALITY_MODE=base`;
 - hybrid independent dequant reference: set `MXFP4_QUALITY_MODE=reference` and
   name its output `hybrid_reference_tp2.json`;
-- hybrid gfx936 safe path: set `MXFP4_QUALITY_MODE=safe`, import
+- hybrid gfx936 candidate: set `MXFP4_QUALITY_MODE=triton`, set
+  `TRITON_HIP_CLANG_PATH=/opt/dtk/llvm/bin/clang`, import
   `integration.vllm.vllm_mxfp4_gfx936` before constructing `vllm.LLM` and name
-  its output `hybrid_safe_tp2.json`.
+  its output `hybrid_triton_tp2.json`.
+
+The Triton backend is guarded: the reproduced Qwen3 TP2 fast path uses fused
+decode-plus-dot for `M >= 370, N >= 2048`; smaller batches and router-sized
+outputs use explicit dequantization plus BF16 matmul. This boundary is part of
+the validated implementation and must not be removed without rerunning the
+same-input and end-to-end gates.
 
 Keep `MXFP4_TP_SIZE=2`, prompts, tokenizer, seed, and model revisions fixed
 across all paths.
@@ -59,11 +66,13 @@ Create a checkpoint-summary JSON with the fields shown in
 python compare_gate.py \
   --official official_bf16_tp2.json \
   --hybrid-reference hybrid_reference_tp2.json \
-  --hybrid-safe hybrid_safe_tp2.json \
+  --hybrid-candidate hybrid_triton_tp2.json \
   --checkpoint checkpoint_summary.json \
   --output formal_experts_bf16_gate.json
 ```
 
 The formal measured result is preserved under
-`../../results/qwen3_30b_a3b/`. It passed 11/11 predefined gates. The probe is
-deliberately narrow and is not a substitute for a standard benchmark suite.
+`../../results/qwen3_30b_a3b/`. It passed 11/11 predefined gates, including
+20/20 exact output sequences, exact top-20 logprobs, and zero PPL delta between
+the hybrid reference and guarded Triton paths. The probe is deliberately narrow
+and is not a substitute for a standard benchmark suite.

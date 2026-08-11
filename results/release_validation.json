@@ -1,36 +1,53 @@
 {
-  "release_backend": "safe",
+  "release_backend": "guarded_triton",
+  "dispatch": {
+    "triton_kpack": 2,
+    "fused_shape_guard": "M >= 370 and N >= 2048",
+    "unvalidated_shape_backend": "safe"
+  },
   "status": "PASS",
   "validated_on": "2026-08-11",
   "operator_tests": {
     "status": "PASS",
-    "passed": 26,
-    "total": 26
+    "passed": 31,
+    "total": 31
   },
   "qwen3_30b_a3b_tp2_gate": {
     "status": "PASS",
     "passed": 11,
     "total": 11,
-    "reference_vs_safe_full_sequence_equal": "20/20",
-    "reference_vs_safe_top20_logprobs_exact": true,
+    "reference_vs_guarded_triton_full_sequence_equal": "20/20",
+    "reference_vs_guarded_triton_top20_logprobs_exact": true,
     "reference_perplexity": 56.924488333517544,
-    "safe_perplexity": 56.924488333517544
+    "triton_perplexity": 56.924488333517544,
+    "relative_perplexity_delta": 0.0
   },
-  "experimental_triton_control": {
+  "same_input_dense_gate": {
+    "status": "PASS",
+    "call_count": 4032,
+    "mismatch_call_count": 0,
+    "mismatch_element_count": 0,
+    "max_abs_diff": 0.0,
+    "fused_fast_path_call_count": 384,
+    "safe_shape_guard_call_count": 3648,
+    "fused_fast_path_element_count": 1998618624,
+    "total_compared_element_count": 2319654912
+  },
+  "pre_fix_forced_triton_control": {
     "status": "FAIL_IMPLEMENTATION_GATE",
     "reference_perplexity": 56.924488333517544,
     "triton_perplexity": 57.79405367358429,
     "relative_perplexity_delta": 0.015275769102604864,
     "full_sequence_equal": "19/20",
-    "release_status": "experimental_only"
+    "release_status": "superseded_by_kpack2_and_shape_guard"
   },
   "sha256": {
-    "src/aiter/ops/triton/moe_op_mxfp4_soft.py": "2fd9177040a8307ea057d79cbbb10497cfccd16b8f07d6a5eb425699f695be07",
+    "src/aiter/ops/triton/moe_op_mxfp4_soft.py": "ae561e773c00c989c8b79e248dff0198608a461a0dc8292bcc2c49502a8a3e1a",
     "integration/vllm/vllm_mxfp4_gfx936.py": "dc2d5f6efe756730399eb3d7f35f2eebb773f573f8242dedd2d7064b7cc5374c",
     "integration/aiter/moe_op_mxfp4.py": "121733f509a75cca4d8562001f907e837ff9afdcd7a06eaf226c456835fcb213",
-    "tests/test_moe_mxfp4_soft.py": "966ed08fdd1ceda62f47aef232a7bbbb60c9d0b94beac79ae69732151313b4e3",
+    "tests/test_moe_mxfp4_soft.py": "af8a33f17be7ab26f3ba2f44ba88dd9bba4e82f9ebd2958aa108fbfba920bfcd",
     "examples/qwen3_30b_a3b/eval_qwen3_30b_moe_quality.py": "db78fdf442446100897d9ee15a456c011a44ee654147fbca1a9cd19055d20abd",
     "examples/qwen3_30b_a3b/build_all_experts_bf16_checkpoint.py": "15dc33e4c3cf867abd7e633dea9281e526ef9346c1801899d8af0dae30dfe603",
-    "examples/qwen3_30b_a3b/compare_gate.py": "1758b9c803e5a4b2b1b180942a2adbe417d945bc092224afa6c2744366528711"
+    "examples/qwen3_30b_a3b/compare_gate.py": "b9a86b17c46e1935e3fdfdaab6c550a5d4fbbd05cd5778e674ceb08e76af27d1"
   }
 }

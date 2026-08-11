@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Compare official BF16, hybrid reference, and hybrid safe results."""
+"""Compare official BF16, hybrid reference, and a hybrid candidate result."""
 
 import argparse
 import json
@@ -78,7 +78,11 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--official", required=True)
     parser.add_argument("--hybrid-reference", required=True)
-    parser.add_argument("--hybrid-safe", required=True)
+    candidate = parser.add_mutually_exclusive_group(required=True)
+    candidate.add_argument("--hybrid-candidate")
+    candidate.add_argument(
+        "--hybrid-safe", dest="hybrid_candidate", help=argparse.SUPPRESS
+    )
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--output", required=True)
     return parser.parse_args()
@@ -88,15 +92,15 @@ def main():
     args = parse_args()
     official = load(args.official)
     hybrid_reference = load(args.hybrid_reference)
-    hybrid_safe = load(args.hybrid_safe)
+    hybrid_candidate = load(args.hybrid_candidate)
     checkpoint = load(args.checkpoint)
 
     quality = compare_pair(official, hybrid_reference)
-    implementation = compare_pair(hybrid_reference, hybrid_safe)
+    implementation = compare_pair(hybrid_reference, hybrid_candidate)
     same_tp = {
         official["tensor_parallel_size"],
         hybrid_reference["tensor_parallel_size"],
-        hybrid_safe["tensor_parallel_size"],
+        hybrid_candidate["tensor_parallel_size"],
     }
     gates = {
         "checkpoint_restored_18432_exact_bf16": (
@@ -112,7 +116,10 @@ def main():
         "checkpoint_ignore_pattern_active": (
             checkpoint["expert_ignore_pattern_present"]
             and checkpoint["reference_unquantized_moe_loaded"]
-            and checkpoint["safe_unquantized_moe_loaded"]
+            and checkpoint.get(
+                "candidate_unquantized_moe_loaded",
+                checkpoint.get("safe_unquantized_moe_loaded", False),
+            )
         ),
         "same_tensor_parallel_size_tp2": same_tp == {2},
         "implementation_full_sequence_exact": (
@@ -141,8 +148,9 @@ def main():
         "total_gate_count": len(gates),
         "gates": gates,
         "checkpoint": checkpoint,
+        "candidate_mode": hybrid_candidate["mode"],
         "quality_official_bf16_vs_hybrid_reference": quality,
-        "implementation_hybrid_reference_vs_safe": implementation,
+        "implementation_hybrid_reference_vs_candidate": implementation,
     }
     Path(args.output).write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",

@@ -1,6 +1,6 @@
 {
   "status": "PASS",
-  "released_backend": "safe",
+  "released_backend": "guarded_triton",
   "passed_gate_count": 11,
   "total_gate_count": 11,
   "environment": {
@@ -31,13 +31,29 @@
     "approximate_checkpoint_size_gib": 56,
     "exact_validation_pass": true
   },
-  "implementation_hybrid_reference_vs_safe": {
+  "implementation_dispatch": {
+    "triton_kpack": 2,
+    "fused_shape_guard": "M >= 370 and N >= 2048",
+    "unvalidated_shape_backend": "safe",
+    "same_input_dense_call_count": 4032,
+    "same_input_dense_mismatch_call_count": 0,
+    "same_input_dense_mismatch_element_count": 0,
+    "same_input_dense_max_abs_diff": 0.0,
+    "fused_fast_path_call_count": 384,
+    "safe_shape_guard_call_count": 3648,
+    "fused_fast_path_element_count": 1998618624,
+    "total_compared_element_count": 2319654912
+  },
+  "implementation_hybrid_reference_vs_guarded_triton": {
+    "candidate_mode": "triton",
     "chat_case_count": 20,
     "first_token_equal_count": 20,
     "full_sequence_equal_count": 20,
     "top20_logprobs_exact": true,
+    "minimum_top20_overlap": 20,
+    "max_common_logprob_abs_diff": 0.0,
     "perplexity_reference": 56.9244883335,
-    "perplexity_safe": 56.9244883335,
+    "perplexity_triton": 56.9244883335,
     "relative_perplexity_delta": 0.0
   },
   "quality_official_bf16_vs_hybrid": {
@@ -49,7 +65,7 @@
     "first_token_equal_count": 18,
     "full_sequence_equal_count": 10
   },
-  "experimental_triton_control": {
+  "pre_fix_forced_triton_control": {
     "status": "FAIL_IMPLEMENTATION_GATE",
     "reference_perplexity": 56.9244883335,
     "triton_perplexity": 57.7940536736,
@@ -58,7 +74,7 @@
     "full_sequence_equal_count": 19,
     "minimum_top20_overlap": 17,
     "max_common_logprob_abs_diff": 2.8785057068,
-    "release_status": "experimental_only"
+    "release_status": "superseded_by_kpack2_and_shape_guard"
   },
   "gates": {
     "checkpoint_restored_18432_exact_bf16": true,
@@ -76,6 +92,7 @@
   "limitations": [
     "The PPL probe contains 380 tokens and is not a broad language-model benchmark.",
     "Full-sequence agreement with official BF16 was 10/20 and was not a predefined hard gate.",
+    "Fusion is released only for the validated M >= 370 and N >= 2048 dispatch range; other dense shapes use the safe backend.",
     "The approximately 56 GiB hybrid checkpoint still requires throughput and capacity acceptance."
   ]
 }

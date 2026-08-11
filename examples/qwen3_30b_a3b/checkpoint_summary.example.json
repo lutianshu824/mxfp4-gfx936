@@ -5,5 +5,5 @@
   "expert_ignore_pattern_present": true,
   "exact_validation_pass": true,
   "reference_unquantized_moe_loaded": true,
-  "safe_unquantized_moe_loaded": true
+  "candidate_unquantized_moe_loaded": true
 }

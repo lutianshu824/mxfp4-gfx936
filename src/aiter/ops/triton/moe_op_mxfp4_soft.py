@@ -57,6 +57,11 @@ def _require_triton_compiler() -> None:
         )
 
 
+def _is_validated_triton_linear_shape(m: int, n: int) -> bool:
+    """Use fusion only in the Qwen3 TP2 shape range validated on gfx936."""
+    return m >= 370 and n >= 2048
+
+
 @triton.jit
 def _fused_moe_mxfp4_bf16_kernel(
     a_ptr,
@@ -328,6 +333,9 @@ def linear_mxfp4_soft(
     backend = _backend()
     if backend == "triton":
         _require_triton_compiler()
+    if backend == "triton" and _is_validated_triton_linear_shape(
+        x_2d.shape[0], packed.shape[0]
+    ):
         output = torch.empty(
             (x_2d.shape[0], packed.shape[0]), dtype=x.dtype, device=x.device
         )
@@ -358,6 +366,7 @@ def linear_mxfp4_soft(
             BLOCK_K=128,
             num_warps=8,
             num_stages=3,
+            kpack=2,
         )
     else:
         weight = dequant_mxfp4(packed, block_scales, x.dtype)
@@ -450,6 +459,7 @@ def fused_moe_mxfp4_soft(
             top_k=top_k,
             num_warps=8,
             num_stages=3,
+            kpack=2,
         )
         return
 

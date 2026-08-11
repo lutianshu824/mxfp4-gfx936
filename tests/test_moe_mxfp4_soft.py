@@ -111,6 +111,108 @@ def test_linear_safe_matches_explicit_dequant(m_value, monkeypatch):
     torch.testing.assert_close(actual, expected, rtol=0, atol=0)
 
 
+def test_linear_triton_matches_safe_for_model_k(monkeypatch):
+    torch.manual_seed(20260811)
+    m_value, n_value, k_value = 16, 256, 2048
+    activations = torch.randn(
+        (m_value, k_value), device="cuda", dtype=torch.bfloat16
+    )
+    weights = torch.randn(
+        (n_value, k_value), device="cuda", dtype=torch.bfloat16
+    )
+    packed, scales = torch_dynamic_mxfp4_quant(weights)
+
+    monkeypatch.setenv("MXFP4_GFX936_BACKEND", "safe")
+    expected = soft.linear_mxfp4_soft(activations, packed, scales)
+    monkeypatch.setenv("MXFP4_GFX936_BACKEND", "triton")
+    monkeypatch.setattr(
+        soft, "_is_validated_triton_linear_shape", lambda _m, _n: True
+    )
+    actual = soft.linear_mxfp4_soft(activations, packed, scales)
+
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    ("m_value", "n_value", "expected"),
+    [(369, 2048, False), (370, 2047, False), (370, 2048, True)],
+)
+def test_triton_linear_shape_guard(m_value, n_value, expected):
+    assert soft._is_validated_triton_linear_shape(m_value, n_value) is expected
+
+
+def test_fused_moe_triton_matches_safe_with_routing_metadata(monkeypatch):
+    torch.manual_seed(20260812)
+    m_value, n_value, k_value, experts, top_k = 16, 256, 2048, 1, 1
+    activations = torch.randn(
+        (m_value, k_value), device="cuda", dtype=torch.bfloat16
+    )
+    weights = torch.randn(
+        (experts, n_value, k_value), device="cuda", dtype=torch.bfloat16
+    )
+    packed, scales = torch_dynamic_mxfp4_quant(weights)
+    topk_weights = torch.ones(
+        (m_value, top_k), device="cuda", dtype=torch.float32
+    )
+    topk_ids = torch.zeros(
+        (m_value, top_k), device="cuda", dtype=torch.int64
+    )
+    scalar_a = torch.ones(1, device="cuda", dtype=torch.float32)
+    scalar_b = torch.ones(experts, device="cuda", dtype=torch.float32)
+    empty = torch.empty(0, device="cuda", dtype=torch.int32)
+
+    expected = torch.empty(
+        (m_value, top_k, n_value), device="cuda", dtype=torch.bfloat16
+    )
+    monkeypatch.setenv("MXFP4_GFX936_BACKEND", "safe")
+    fused_moe_mxfp4_soft(
+        activations,
+        packed,
+        expected,
+        scalar_a,
+        scalar_b,
+        None,
+        scales,
+        topk_weights,
+        topk_ids,
+        empty,
+        empty,
+        empty,
+        False,
+        top_k,
+        False,
+        False,
+    )
+
+    actual = torch.empty_like(expected)
+    sorted_token_ids = torch.arange(m_value, device="cuda", dtype=torch.int32)
+    expert_ids = torch.zeros(1, device="cuda", dtype=torch.int32)
+    num_tokens_post_padded = torch.tensor(
+        [m_value], device="cuda", dtype=torch.int32
+    )
+    monkeypatch.setenv("MXFP4_GFX936_BACKEND", "triton")
+    fused_moe_mxfp4_soft(
+        activations,
+        packed,
+        actual,
+        scalar_a,
+        scalar_b,
+        None,
+        scales,
+        topk_weights,
+        topk_ids,
+        sorted_token_ids,
+        expert_ids,
+        num_tokens_post_padded,
+        False,
+        top_k,
+        False,
+        False,
+    )
+
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+
 @pytest.mark.parametrize("m_value", [1, 2, 4, 8, 64])
 @pytest.mark.parametrize("quantize_activations", [False, True])
 @pytest.mark.parametrize("mul_routed_weight", [False, True])

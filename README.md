@@ -15,22 +15,27 @@ operands. On the tested `gfx936` toolchain, compilation stops at
 to an architecture allow-list does not provide the missing compiler lowering.
 
 The precision-safe backend keeps checkpoint weights packed, explicitly
-dequantizes OCP MXFP4 on device, and calls the platform BF16 matmul. An
-experimental fused backend performs the following work inside a Triton tile:
+dequantizes OCP MXFP4 on device, and calls the platform BF16 matmul. The
+guarded Triton backend performs the following work inside a fused tile:
 
 1. unpack the low/high OCP E2M1 nibbles in original K order;
 2. apply one E8M0 scale per 32 values;
 3. interleave the decoded values into BF16 tiles;
 4. execute a single BF16 dot and accumulate in FP32.
 
-The fused backend uses a single dot because two separate low/high dots produced small
-rounding differences that could be amplified by MoE routing.
+The fused backend uses a single dot because two separate low/high dots produced
+small rounding differences that could be amplified by MoE routing. On gfx936,
+`kpack=2` is required to match the platform BF16 reduction for the validated
+large-prefill shapes. Smaller batches and router-sized outputs still follow a
+different reduction path, so the backend sends unvalidated shapes to the safe
+implementation.
 
 The backends are explicit:
 
-- `safe` is the default and the only backend covered by the passing Qwen3 gate;
-- `triton` is experimental and must be requested explicitly. It fails loudly
-  when the compiler path is unavailable and is not presented as precision-passed.
+- `safe` is the default and always uses explicit dequantization plus BF16 matmul;
+- `triton` enables the validated fused fast path for `M >= 370, N >= 2048` and
+  uses the safe path otherwise. It must be requested explicitly and fails
+  loudly when the compiler path is unavailable.
 
 ## Scope
 
@@ -40,7 +45,8 @@ The backends are explicit:
 | Packed MXFP4 activation × packed MXFP4 weight | Correctness fallback supported |
 | Dense W4A16 linear, safe backend | Supported and precision-gated |
 | Routed MoE with route weights, safe backend | Supported |
-| Fused Triton dense/MoE | Experimental; not precision-released |
+| Guarded Triton dense path | Qwen3 TP2 precision-gated |
+| Fused Triton routed MoE | Operator-tested; not used by the BF16-expert example |
 | E2M1 values + E8M0 scale, block size 32 | Supported |
 | Swizzled MX scales | Not supported; fails explicitly |
 | Native MXFP4 throughput | Not claimed |
@@ -50,13 +56,13 @@ turn `gfx936` into hardware-native MXFP4 execution.
 
 ## Repository layout
 
-- `src/aiter/ops/triton/moe_op_mxfp4_soft.py`: safe fallback plus experimental
-  dense and routed-MoE Triton kernels.
+- `src/aiter/ops/triton/moe_op_mxfp4_soft.py`: safe fallback plus guarded dense
+  and routed-MoE Triton kernels.
 - `integration/aiter/moe_op_mxfp4.py`: AITER entry file with the `gfx936`
   dispatch. It is based on OpenDAS AITER commit `e99c6755`.
 - `integration/vllm/vllm_mxfp4_gfx936.py`: minimal vLLM 0.15 runtime adapter
   for compressed-tensors W4A16 and W4A4 MoE schemes.
-- `tests/test_moe_mxfp4_soft.py`: 21-case operator gate.
+- `tests/test_moe_mxfp4_soft.py`: 31-case operator gate.
 - `examples/qwen3_30b_a3b/`: checkpoint builder and same-TP quality gate.
 - `results/qwen3_30b_a3b/`: sanitized measured results.
 
@@ -85,7 +91,8 @@ pytest -q op_tests/triton_tests/test_moe_mxfp4_soft.py
 The original operator matrix passed 21/21 cases: all 16 E2M1 codes, M values
 1/2/4/8/64, BF16 and MXFP4 activations, and routed-weight on/off. The public
 test file adds backend-selection, fail-loud compiler, and dense-safe exactness
-checks; the release suite passes 26/26.
+checks plus guarded Triton dense/MoE comparisons; the release suite passes
+31/31.
 
 ## vLLM integration
 
@@ -107,16 +114,18 @@ Tested end-to-end stack:
 - Triton 3.3 from the validated vLLM image
 - vLLM 0.15.1
 
-Only the experimental fused backend needs `MXFP4_IMPLEMENTATION=triton` and an
-explicit `TRITON_HIP_CLANG_PATH`. It raises an error instead of silently falling
-back when the compiler is unavailable.
+The guarded fused backend needs `MXFP4_IMPLEMENTATION=triton` and an explicit
+`TRITON_HIP_CLANG_PATH`. It raises an error instead of silently ignoring a
+missing compiler. Shape-guard fallback is intentional and documented, not a
+compiler-error fallback.
 
 ## Qwen3-30B-A3B example
 
 The original all-MXFP4 checkpoint failed the predefined quality gate even
 though the software implementation matched an independent dequantized reference.
-The release audit later established that this passing path was the safe BF16
-fallback, not the fused Triton backend.
+The initial release audit established that the first passing path was the safe
+BF16 fallback, not the fused Triton backend. The later kpack/shape investigation
+produced the guarded Triton result reported below.
 Single-factor ablations identified routed expert gate/up as the largest loss
 source. The final example therefore restores all routed expert gate/up/down
 weights from the same-source BF16 checkpoint and keeps non-expert weights in
@@ -144,9 +153,10 @@ MXFP4_MODEL=/models/Qwen3-30B-A3B-BF16 \
 MXFP4_RESULT_PATH=official_bf16_tp2.json \
 python examples/qwen3_30b_a3b/eval_qwen3_30b_moe_quality.py
 
-MXFP4_QUALITY_MODE=safe MXFP4_TP_SIZE=2 \
+MXFP4_QUALITY_MODE=triton MXFP4_TP_SIZE=2 \
 MXFP4_MODEL=/models/Qwen3-30B-A3B-MXFP4A16-expertsBF16 \
-MXFP4_RESULT_PATH=hybrid_safe_tp2.json \
+MXFP4_RESULT_PATH=hybrid_triton_tp2.json \
+TRITON_HIP_CLANG_PATH=/opt/dtk/llvm/bin/clang \
 python examples/qwen3_30b_a3b/eval_qwen3_30b_moe_quality.py
 ```
 
@@ -157,12 +167,17 @@ and gate command.
 
 The formal hybrid checkpoint passed all 11 predefined same-TP precision gates:
 
-- implementation: independent reference versus safe backend, with 20/20 full
+- implementation: independent reference versus guarded Triton backend, with 20/20 full
   token sequences and top-20 logprobs exact;
-- PPL: official BF16 `58.3569`, hybrid reference/safe `56.9245`;
+- PPL: official BF16 `58.3569`, hybrid reference/guarded Triton `56.9245`;
 - quality: 20/20 tokenization and 18/20 first-token agreement;
 - structure: 18,432 exact BF16 expert tensors, zero quantized expert tensors,
   and 240 non-expert packed MXFP4 weights retained.
+
+The final same-input audit compared 4,032 dense calls across both TP ranks and
+found zero mismatched calls or elements. The shape guard sent 384 calls through
+the fused fast path; those calls represented 1,998,618,624 of 2,319,654,912
+compared output elements (about 86.16%).
 
 This is a 380-token probe, not a broad benchmark. Full-sequence agreement with
 official BF16 was 10/20 and was not a predefined hard gate. The result supports
@@ -170,10 +185,12 @@ implementation correctness and the stated narrow precision gate; it does not
 establish general quality superiority. The hybrid checkpoint also grows from
 about 17 GiB to about 56 GiB, so throughput and capacity acceptance remain.
 
-A forced fused-Triton control run produced PPL `57.7941` versus reference
-`56.9245` (+1.5276%), with 19/20 full sequences equal. It failed the predefined
-0.1% implementation threshold. The repository therefore exposes that backend
-only as experimental and does not use it for the passing Qwen3 example.
+Before the `kpack=2` fix and shape guard, a forced fused-Triton control run
+produced PPL `57.7941` versus reference `56.9245` (+1.5276%), with 19/20 full
+sequences equal. The released guarded backend produces PPL `56.9245`, 20/20
+full sequences, exact top-20 logprobs, and zero relative PPL difference on the
+same TP2 gate. This validates the stated dispatch policy, not unrestricted
+fusion for every matrix shape.
 
 Full sanitized evidence is in
 `results/qwen3_30b_a3b/formal_experts_bf16_gate.json`.

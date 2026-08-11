@@ -14,8 +14,14 @@ to same-source BF16 and retained MXFP4 for non-expert weights. It passed all 11
 predefined precision gates.
 
 The passing implementation comparison is the explicit `reference` path versus
-the explicit `safe` backend. A forced fused-Triton control run did not pass the
-implementation gate and is not represented as a passing result.
+the guarded `triton` backend. The fused fast path uses `kpack=2` only for the
+validated large-prefill shape range; small batches and router-sized outputs use
+the safe BF16 matmul path. A pre-fix forced-fusion control is retained in the
+result JSON to show the regression that the guard addresses.
+
+The final same-input audit covered 4,032 dense calls on the two TP ranks with
+zero mismatched calls or elements. Of those, 384 calls entered the fused fast
+path and covered about 86.16% of compared output elements.
 
 Important boundary: PPL used only 380 tokens. Full-sequence agreement against
 official BF16 was 10/20 and was not a predefined hard gate. Treat this as a
