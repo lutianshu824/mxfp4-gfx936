@@ -1,0 +1,81 @@
+{
+  "status": "PASS",
+  "released_backend": "safe",
+  "passed_gate_count": 11,
+  "total_gate_count": 11,
+  "environment": {
+    "device": "Hygon BW100",
+    "architecture": "gfx936",
+    "dtk": "26.04",
+    "pytorch": "2.9",
+    "triton": "3.3",
+    "vllm": "0.15.1",
+    "tensor_parallel_size": 2
+  },
+  "model_sources": {
+    "bf16_repo": "Qwen/Qwen3-30B-A3B",
+    "bf16_revision": "ad44e777bcd18fa416d9da3bd8f70d33ebb85d39",
+    "mxfp4_repo": "nm-testing/Qwen3-30B-A3B-MXFP4A16",
+    "same_source_verification": {
+      "architecture_equal": true,
+      "lm_head_exact": true,
+      "chat_tokenization_equal": true,
+      "ppl_tokenization_equal": true
+    }
+  },
+  "checkpoint": {
+    "restored_expert_weight_count": 18432,
+    "remaining_expert_quantized_tensor_count": 0,
+    "remaining_nonexpert_packed_weight_count": 240,
+    "added_bf16_bytes": 57982058496,
+    "approximate_checkpoint_size_gib": 56,
+    "exact_validation_pass": true
+  },
+  "implementation_hybrid_reference_vs_safe": {
+    "chat_case_count": 20,
+    "first_token_equal_count": 20,
+    "full_sequence_equal_count": 20,
+    "top20_logprobs_exact": true,
+    "perplexity_reference": 56.9244883335,
+    "perplexity_safe": 56.9244883335,
+    "relative_perplexity_delta": 0.0
+  },
+  "quality_official_bf16_vs_hybrid": {
+    "ppl_token_count": 380,
+    "official_bf16_perplexity": 58.356881034,
+    "hybrid_perplexity": 56.9244883335,
+    "relative_perplexity_delta": -0.0245453951,
+    "prompt_tokenization_equal_count": 20,
+    "first_token_equal_count": 18,
+    "full_sequence_equal_count": 10
+  },
+  "experimental_triton_control": {
+    "status": "FAIL_IMPLEMENTATION_GATE",
+    "reference_perplexity": 56.9244883335,
+    "triton_perplexity": 57.7940536736,
+    "relative_perplexity_delta": 0.0152757691,
+    "first_token_equal_count": 20,
+    "full_sequence_equal_count": 19,
+    "minimum_top20_overlap": 17,
+    "max_common_logprob_abs_diff": 2.8785057068,
+    "release_status": "experimental_only"
+  },
+  "gates": {
+    "checkpoint_restored_18432_exact_bf16": true,
+    "checkpoint_no_quantized_expert_tensors": true,
+    "checkpoint_nonexpert_mxfp4_preserved": true,
+    "checkpoint_ignore_pattern_active": true,
+    "same_tensor_parallel_size_tp2": true,
+    "implementation_full_sequence_exact": true,
+    "implementation_relative_perplexity_within_0_1pct": true,
+    "implementation_logprob_close": true,
+    "quality_relative_perplexity_within_5pct": true,
+    "quality_chat_tokenization_exact": true,
+    "quality_first_token_agreement_at_least_90pct": true
+  },
+  "limitations": [
+    "The PPL probe contains 380 tokens and is not a broad language-model benchmark.",
+    "Full-sequence agreement with official BF16 was 10/20 and was not a predefined hard gate.",
+    "The approximately 56 GiB hybrid checkpoint still requires throughput and capacity acceptance."
+  ]
+}

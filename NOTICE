@@ -1,0 +1,6 @@
+This repository contains code derived from OpenDAS AITER at commit
+e99c675538b77b1cc99917546aced406c0ac7ccb. AITER is distributed under
+the MIT License; see LICENSE.
+
+Qwen and Qwen3 are trademarks or project names of their respective owners.
+No model weights are distributed by this repository.

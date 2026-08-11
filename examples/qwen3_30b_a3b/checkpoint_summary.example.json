@@ -1,0 +1,9 @@
+{
+  "restored_expert_weight_count": 18432,
+  "remaining_expert_quantized_tensor_count": 0,
+  "remaining_nonexpert_packed_weight_count": 240,
+  "expert_ignore_pattern_present": true,
+  "exact_validation_pass": true,
+  "reference_unquantized_moe_loaded": true,
+  "safe_unquantized_moe_loaded": true
+}
